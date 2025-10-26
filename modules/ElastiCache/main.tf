@@ -126,9 +126,8 @@ resource "aws_elasticache_replication_group" "main" {
   transit_encryption_enabled = var.transit_encryption_enabled
   kms_key_id                 = aws_kms_key.redis.arn
 
-  # Auth token for transit encryption
-  auth_token_enabled = var.transit_encryption_enabled
-  auth_token         = var.transit_encryption_enabled ? var.auth_token : null
+  # Auth token for transit encryption (authentication is enabled automatically when auth_token is provided)
+  auth_token = var.transit_encryption_enabled ? var.auth_token : null
 
   # Maintenance and backup
   maintenance_window       = var.maintenance_window
