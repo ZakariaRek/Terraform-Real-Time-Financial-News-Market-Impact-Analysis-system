@@ -1,6 +1,5 @@
-# environments/development/main.tf
-# Main Terraform configuration for Development Environment
-# Uses existing manually created RDS instance
+# environments/development/main.tf - SIMPLIFIED VERSION
+# Based on working e-commerce setup
 
 terraform {
   required_version = ">= 1.5.0"
@@ -41,11 +40,6 @@ locals {
   }
 }
 
-# Data source for existing RDS VPC (to configure security groups)
-data "aws_vpc" "existing_rds_vpc" {
-  id = var.existing_rds_vpc_id
-}
-
 # VPC and Networking
 module "networking" {
   source = "../../modules/Networking"
@@ -54,10 +48,10 @@ module "networking" {
   vpc_cidr             = var.vpc_cidr
   region               = var.region
   cluster_name         = local.cluster_name
-  enable_nat_gateway   = true  # Required for private EKS nodes
-  single_nat_gateway   = true  # Single NAT for cost savings (~$32/month)
-  enable_flow_logs     = false # Disable for cost savings
-  enable_vpc_endpoints = false # Disable for cost savings
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
+  enable_flow_logs     = false
+  enable_vpc_endpoints = false
   common_tags          = local.common_tags
 }
 
@@ -79,36 +73,16 @@ module "eks" {
   node_desired_size   = var.node_desired_size
   node_min_size       = var.node_min_size
   node_max_size       = var.node_max_size
-  node_capacity_type  = "SPOT" # Use SPOT instances for dev
+  node_capacity_type  = "SPOT"
 
   common_tags = local.common_tags
 
   depends_on = [module.networking]
 }
 
-# Security Group Rule: Allow EKS nodes to access existing RDS
-# Add ingress rule to your existing RDS security group
-resource "aws_security_group_rule" "rds_from_eks" {
-  type                     = "ingress"
-  from_port                = var.existing_rds_port
-  to_port                  = var.existing_rds_port
-  protocol                 = "tcp"
-  source_security_group_id = module.eks.node_security_group_id
-  security_group_id        = var.existing_rds_sg_id
-  description              = "Allow EKS nodes to access RDS"
-}
-
-# # Optional: Allow RDS security group to receive traffic from EKS VPC CIDR
-# # This is an alternative/additional rule if the above doesn't work
-resource "aws_security_group_rule" "rds_from_eks_cidr" {
-  type              = "ingress"
-  from_port         = var.existing_rds_port
-  to_port           = var.existing_rds_port
-  protocol          = "tcp"
-  cidr_blocks       = [var.vpc_cidr]
-  security_group_id = var.existing_rds_sg_id
-  description       = "Allow EKS VPC CIDR to access RDS"
-}
+# ✅ REMOVED: Cross-VPC security group rules (they don't work)
+# Your RDS is already publicly accessible at:
+# postgres.curiyq4aismn.us-east-1.rds.amazonaws.com:5432
 
 # ElastiCache Redis
 module "elasticache" {
@@ -119,17 +93,15 @@ module "elasticache" {
   private_subnet_ids      = module.networking.private_subnet_ids
   allowed_security_groups = [module.eks.node_security_group_id]
 
-  # Redis Configuration
   redis_version              = "7.1"
   redis_node_type            = var.redis_node_type
   redis_num_cache_nodes      = var.redis_num_cache_nodes
   multi_az_enabled           = false
   transit_encryption_enabled = false
 
-  # Maintenance
   maintenance_window       = "sun:05:00-sun:06:00"
   snapshot_window          = "03:00-04:00"
-  snapshot_retention_limit = 1 # Minimal retention for dev
+  snapshot_retention_limit = 1
 
   common_tags = local.common_tags
 
@@ -144,7 +116,7 @@ module "s3_data_lake" {
   bucket_name    = "${var.environment}-market-impact-data-lake-${data.aws_caller_identity.current.account_id}"
   bucket_purpose = "data-lake"
 
-  versioning_enabled      = false # Disabled for dev
+  versioning_enabled      = false
   lifecycle_rules_enabled = true
   logging_enabled         = false
   cors_enabled            = false
@@ -161,22 +133,26 @@ module "s3_data_lake" {
 # Data source for current AWS account
 data "aws_caller_identity" "current" {}
 
-# Store existing RDS connection details in SSM Parameter Store
-# This makes it easier to reference in your application
+# Store RDS connection info in SSM (for reference only - use public endpoint)
 resource "aws_ssm_parameter" "rds_endpoint" {
   name        = "/${var.environment}/rds/endpoint"
-  description = "Existing RDS endpoint"
+  description = "Existing RDS public endpoint"
   type        = "String"
   value       = var.existing_rds_endpoint
 
   tags = local.common_tags
 }
 
-resource "aws_ssm_parameter" "rds_port" {
-  name        = "/${var.environment}/rds/port"
-  description = "Existing RDS port"
+resource "aws_ssm_parameter" "rds_connection_info" {
+  name        = "/${var.environment}/rds/connection-info"
+  description = "RDS connection information"
   type        = "String"
-  value       = var.existing_rds_port
+  value       = jsonencode({
+    endpoint = var.existing_rds_endpoint
+    port     = var.existing_rds_port
+    note     = "This RDS is in a different VPC. Connect using public endpoint."
+    connection_string = "postgresql://USERNAME:PASSWORD@${var.existing_rds_endpoint}:${var.existing_rds_port}/DATABASE_NAME"
+  })
 
   tags = local.common_tags
 }

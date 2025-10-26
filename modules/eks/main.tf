@@ -162,6 +162,9 @@ resource "aws_iam_role_policy_attachment" "node_AmazonSSMManagedInstanceCore" {
 }
 
 # Launch Template for Node Group
+# modules/eks/main.tf - FIXED VERSION
+# Remove the user_data section from aws_launch_template
+
 resource "aws_launch_template" "node_group" {
   name_prefix = "${var.cluster_name}-node-group-"
   description = "Launch template for ${var.cluster_name} EKS nodes"
@@ -200,16 +203,17 @@ resource "aws_launch_template" "node_group" {
     )
   }
 
-  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    cluster_name     = var.cluster_name
-    cluster_endpoint = aws_eks_cluster.main.endpoint
-    cluster_ca       = aws_eks_cluster.main.certificate_authority[0].data
-  }))
+  # ✅ REMOVED: user_data section - EKS managed node groups handle this automatically
+  # ❌ DELETE THIS ENTIRE SECTION:
+  # user_data = base64encode(templatefile("${path.module}/user_data.sh", {
+  #   cluster_name     = var.cluster_name
+  #   cluster_endpoint = aws_eks_cluster.main.endpoint
+  #   cluster_ca       = aws_eks_cluster.main.certificate_authority[0].data
+  # }))
 
   tags = var.common_tags
 }
 
-# EKS Node Group
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.cluster_name}-node-group"
@@ -240,7 +244,6 @@ resource "aws_eks_node_group" "main" {
     NodeGroup   = "primary"
   }
 
-  # Ensure proper ordering of resource creation
   depends_on = [
     aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
@@ -249,7 +252,6 @@ resource "aws_eks_node_group" "main" {
 
   tags = var.common_tags
 
-  # ✅ FIXED: Alternative syntax that IDEs understand better
   lifecycle {
     create_before_destroy = true
     ignore_changes = [
@@ -257,6 +259,7 @@ resource "aws_eks_node_group" "main" {
     ]
   }
 }
+
 
 # EKS Addons
 resource "aws_eks_addon" "vpc_cni" {
