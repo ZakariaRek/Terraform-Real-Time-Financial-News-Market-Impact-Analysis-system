@@ -63,6 +63,14 @@ resource "aws_kms_alias" "eks" {
   target_key_id = aws_kms_key.eks.key_id
 }
 
+# CloudWatch Log Group for EKS
+resource "aws_cloudwatch_log_group" "cluster" {
+  name              = "/aws/eks/${var.cluster_name}/cluster"
+  retention_in_days = var.cloudwatch_log_group_retention_in_days
+
+  tags = var.common_tags
+}
+
 # EKS Cluster
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
@@ -95,23 +103,21 @@ resource "aws_eks_cluster" "main" {
   tags = var.common_tags
 }
 
-# CloudWatch Log Group for EKS
-resource "aws_cloudwatch_log_group" "cluster" {
-  name              = "/aws/eks/${var.cluster_name}/cluster"
-  retention_in_days = var.cloudwatch_log_group_retention_in_days
-
-  tags = var.common_tags
+# ✅ Local variable to store OIDC issuer (cleaner approach)
+# ✅ Local variable to store OIDC issuer (cleaner approach)
+locals {
+  oidc_issuer_url = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
 # OIDC Provider for IRSA (IAM Roles for Service Accounts)
 data "tls_certificate" "cluster" {
-  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
+  url = local.oidc_issuer_url
 }
 
 resource "aws_iam_openid_connect_provider" "cluster" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.cluster.certificates[0].sha1_fingerprint]
-  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
+  url             = local.oidc_issuer_url
 
   tags = var.common_tags
 }
@@ -195,9 +201,9 @@ resource "aws_launch_template" "node_group" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    cluster_name        = var.cluster_name
-    cluster_endpoint    = aws_eks_cluster.main.endpoint
-    cluster_ca          = aws_eks_cluster.main.certificate_authority[0].data
+    cluster_name     = var.cluster_name
+    cluster_endpoint = aws_eks_cluster.main.endpoint
+    cluster_ca       = aws_eks_cluster.main.certificate_authority[0].data
   }))
 
   tags = var.common_tags
@@ -243,26 +249,29 @@ resource "aws_eks_node_group" "main" {
 
   tags = var.common_tags
 
+  # ✅ FIXED: Alternative syntax that IDEs understand better
   lifecycle {
     create_before_destroy = true
-    ignore_changes        = [scaling_config[0].desired_size]
+    ignore_changes = [
+      scaling_config
+    ]
   }
 }
 
 # EKS Addons
 resource "aws_eks_addon" "vpc_cni" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "vpc-cni"
-  addon_version            = var.vpc_cni_version
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "vpc-cni"
+  addon_version               = var.vpc_cni_version
   resolve_conflicts_on_update = "OVERWRITE"
 
   tags = var.common_tags
 }
 
 resource "aws_eks_addon" "coredns" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "coredns"
-  addon_version            = var.coredns_version
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "coredns"
+  addon_version               = var.coredns_version
   resolve_conflicts_on_update = "OVERWRITE"
 
   depends_on = [aws_eks_node_group.main]
@@ -271,20 +280,20 @@ resource "aws_eks_addon" "coredns" {
 }
 
 resource "aws_eks_addon" "kube_proxy" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "kube-proxy"
-  addon_version            = var.kube_proxy_version
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "kube-proxy"
+  addon_version               = var.kube_proxy_version
   resolve_conflicts_on_update = "OVERWRITE"
 
   tags = var.common_tags
 }
 
 resource "aws_eks_addon" "ebs_csi_driver" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "aws-ebs-csi-driver"
-  addon_version            = var.ebs_csi_driver_version
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "aws-ebs-csi-driver"
+  addon_version               = var.ebs_csi_driver_version
   resolve_conflicts_on_update = "OVERWRITE"
-  service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
+  service_account_role_arn    = aws_iam_role.ebs_csi_driver.arn
 
   tags = var.common_tags
 }
@@ -303,8 +312,8 @@ resource "aws_iam_role" "ebs_csi_driver" {
       }
       Condition = {
         StringEquals = {
-          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:aud" = "sts.amazonaws.com"
+          "${replace(local.oidc_issuer_url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+          "${replace(local.oidc_issuer_url, "https://", "")}:aud" = "sts.amazonaws.com"
         }
       }
     }]
