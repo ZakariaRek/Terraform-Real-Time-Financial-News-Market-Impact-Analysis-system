@@ -3,12 +3,12 @@ environment = "dev"
 vpc_cidr    = "10.2.0.0/16"
 region      = "us-east-1"
 
-# EKS Configuration - INCREASED INSTANCE SIZE
+# EKS Configuration - SCALE UP FOR PRODUCTION-LIKE SETUP
 cluster_version     = "1.30"
-node_instance_types = ["t3.small"]  # Changed from t3.micro (2GB RAM instead of 1GB)
-node_min_size       = 1
-node_max_size       = 2
-node_desired_size   = 1
+node_instance_types = ["t3.small"]  # 2 vCPU, 4GB RAM
+node_min_size       =  6            # At least 2 nodes
+node_max_size       = 8
+node_desired_size   = 6             # Start with 2 nodes
 
 # Redis Configuration
 redis_node_type        = "cache.t3.micro"
