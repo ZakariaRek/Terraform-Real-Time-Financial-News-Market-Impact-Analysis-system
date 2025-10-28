@@ -254,9 +254,9 @@ resource "aws_eks_node_group" "main" {
 
   lifecycle {
     create_before_destroy = true
-    ignore_changes = [
-      scaling_config
-    ]
+  #  ignore_changes = [
+   #   scaling_config
+   # ]
   }
 }
 
