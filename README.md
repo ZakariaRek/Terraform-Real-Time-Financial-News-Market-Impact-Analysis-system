@@ -62,23 +62,23 @@ graph TB
         Users[Users/Applications]
     end
     
-    subgraph AWS Cloud
+    subgraph AWS["AWS Cloud"]
         subgraph VPC["VPC (10.2.0.0/16)"]
-            subgraph Public Subnets
+            subgraph Public["Public Subnets"]
                 IGW[Internet Gateway]
                 NAT[NAT Gateway]
                 ALB[Application Load Balancer]
             end
             
-            subgraph Private Subnets
-                subgraph EKS Cluster
+            subgraph Private["Private Subnets"]
+                subgraph EKS["EKS Cluster"]
                     API[API Services]
                     Worker[Worker Nodes]
                     Processing[Data Processing]
                 end
             end
             
-            subgraph Database Subnets
+            subgraph Database["Database Subnets"]
                 RDS[(RDS PostgreSQL<br/>Existing Instance)]
                 Redis[(ElastiCache Redis)]
             end
@@ -88,7 +88,7 @@ graph TB
             end
         end
         
-        subgraph Security & Management
+        subgraph Security["Security & Management"]
             KMS[AWS KMS]
             Secrets[Secrets Manager]
             CW[CloudWatch]
@@ -104,12 +104,16 @@ graph TB
     Processing --> Redis
     Processing --> S3
     
-    EKS Cluster --> KMS
+    API --> KMS
+    Worker --> KMS
+    Processing --> KMS
     RDS --> KMS
     Redis --> KMS
     S3 --> KMS
     
-    EKS Cluster --> CW
+    API --> CW
+    Worker --> CW
+    Processing --> CW
     RDS --> CW
     Redis --> CW
     
@@ -117,8 +121,8 @@ graph TB
     Worker --> Secrets
 
     style VPC fill:#e1f5ff
-    style EKS Cluster fill:#fff4e6
-    style Security & Management fill:#f3e5f5
+    style EKS fill:#fff4e6
+    style Security fill:#f3e5f5
     style Storage fill:#e8f5e9
 ```
 
